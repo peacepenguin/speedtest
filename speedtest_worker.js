@@ -850,7 +850,7 @@ function rpm(way, createLoadGeneratingConnexions, doPing, done, updateTotalLoade
 				let ratioRPM = "";
 				if (pingAsRPM) {
 					pingAsRPM = Math.round(60_000 / pingAsRPM);
-					ratioRPM = rpm / pingAsRPM;
+					ratioRPM = pingAsRPM / rpm;
 					ratioRPM = ratioRPM.toFixed(2);
 				};
 				if (way === "upload") {
