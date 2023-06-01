@@ -22,7 +22,7 @@ Works with mobile versions too.
 * Telemetry (optional)
 * Results sharing (optional)
 * Multiple Points of Test (optional)
-* Responsiveness Under Working Conditions (optional)
+* Responsiveness Under Working Conditions (Bufferbloat test) (optional)
 
 ![Screenshot](https://speedtest.fdossena.com/mpot_v6.gif)
 
