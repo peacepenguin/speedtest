@@ -27,7 +27,7 @@ Works with mobile versions too.
 ## Responsiveness Under Working Conditions
 * Tests for Bufferbloat
 * Shows latency changes during upload and download tests
-* The "Factor of latency increase" for both upload and download shoulbe be 1.3 or lower. 1.00 is perfect, ie, no latency change while under load.
+* The "Factor of latency increase" for both upload and download should be 1.3 or lower. 1.00 is perfect, ie. no latency change while under load
 * Based on: https://datatracker.ietf.org/doc/draft-ietf-ippm-responsiveness/
 
 ![Screenshot](https://speedtest.fdossena.com/mpot_v6.gif)
