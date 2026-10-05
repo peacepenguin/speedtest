@@ -19,6 +19,7 @@ const testState = {
   initialGaugeScrollPending: false,
   initialGaugeScrollScheduled: false,
   selectedServerDirty: false,
+  pingingServers: false,
   testData: null,
   testDataDirty: false,
   telemetryEnabled: false,
@@ -171,7 +172,7 @@ async function applyServerListJSON() {
       typeof globalThis.SPEEDTEST_SERVERS !== "undefined"
         ? globalThis.SPEEDTEST_SERVERS
         : "server-list.json";
-    let servers;
+    let servers; // reassigned below when the local server is added
     if (Array.isArray(serverSource)) {
       servers = serverSource;
     } else {
@@ -184,48 +185,79 @@ async function applyServerListJSON() {
       return useLocalServer();
     }
 
-    testState.servers = servers;
-
-    // If there's only one server, just show it. No reachability checks needed.
-    if (servers.length === 1) {
-      populateDropdown(servers);
-      return;
+    // The server hosting this page is always a choice, unless the list already
+    // contains it.
+    const local = localServerDefinition();
+    if (!servers.some((s) => s.server === local.server && s.dlURL === local.dlURL)) {
+      servers = [local, ...servers];
     }
 
-    // For multiple servers: first run the built-in selection (which pings servers
-    // and annotates them with pingT). Only then populate the dropdown so that
-    // dead servers don't appear.
-    testState.speedtest.addTestPoints(servers);
-    testState.speedtest.selectServer((bestServer) => {
-      const aliveServers = testState.servers.filter((s) => {
-        // Keep servers that responded to ping (pingT !== -1).
-        if (s.pingT !== -1) return true;
-        // Also keep protocol-relative servers ("//...") as a defensive fallback.
-        // LibreSpeed normalizes them to the page protocol before pinging, so they
-        // are normally treated like any other server and get a real pingT value.
-        return typeof s.server === "string" && s.server.startsWith("//");
-      });
+    testState.servers = servers;
 
-      // Prefer to show only reachable servers, but if none are reachable,
-      // fall back to the full list so users can still pick a server manually.
-      if (aliveServers.length > 0) {
-        testState.servers = aliveServers;
-      }
-      populateDropdown(testState.servers);
-
-
-      if (bestServer) {
-        selectServer(bestServer);
-      } else {
-        alert(
-          "Can't reach any of the speedtest servers! But you're on this page. Something weird is going on with your network."
-        );
-      }
-    });
+    // Default to the local server; pinging every listed server only happens
+    // when the user asks for it with the "Find closest server" button.
+    // "mpot" makes the backend send CORS headers so remote servers work.
+    testState.speedtest.setParameter("mpot", true);
+    populateDropdown(servers);
+    if (servers.length > 1) {
+      selectServer(local);
+      hookUpFindClosestButton();
+    }
   } catch (error) {
     console.error("Failed to load server list:", error);
     useLocalServer();
   }
+}
+
+/**
+ * Ping all known servers with a separate Speedtest instance (so the main one
+ * stays selectable), show the results in the dropdown and switch to the
+ * server with the lowest ping.
+ */
+function findClosestServer() {
+  const button = document.querySelector("#find-closest");
+  if (testState.state === RUNNING || testState.pingingServers) return;
+  testState.pingingServers = true;
+  button.textContent = "Pinging servers...";
+
+  const finder = new Speedtest();
+  finder.addTestPoints(testState.servers);
+  finder.selectServer((bestServer) => {
+    // Show results lowest ping first, unreachable servers last
+    const pingOf = (s) => (s.pingT > 0 ? s.pingT : Infinity);
+    testState.servers.sort((a, b) => pingOf(a) - pingOf(b));
+    populateDropdown(testState.servers);
+
+    if (bestServer && testState.state !== RUNNING) {
+      selectServer(bestServer);
+    }
+    testState.pingingServers = false;
+    button.textContent = bestServer
+      ? "Find closest server again"
+      : "No servers reachable - retry";
+  });
+}
+
+function hookUpFindClosestButton() {
+  const button = document.querySelector("#find-closest");
+  button.classList.remove("hidden");
+  button.addEventListener("click", findClosestServer);
+}
+
+/**
+ * Server definition for the server hosting this page, using the default
+ * backend paths.
+ */
+function localServerDefinition() {
+  return {
+    name: "This server (local)",
+    server: new URL(".", location.href).href,
+    dlURL: "backend/garbage.php",
+    ulURL: "backend/empty.php",
+    pingURL: "backend/empty.php",
+    getIpURL: "backend/getIP.php",
+    isLocal: true,
+  };
 }
 
 /**
@@ -296,7 +328,12 @@ function populateDropdown(servers) {
     country = country.replace(/\s*\([^)]*\)\s*/g, "").trim();
     return { country, city };
   };
+  // Once pings have been measured, keep the order given (lowest ping first)
+  const measured = servers.some((s) => s.pingT !== undefined);
   const sorted = [...servers].sort((a, b) => {
+    if (measured) return 0;
+    // Local server always comes first
+    if (a.isLocal !== b.isLocal) return a.isLocal ? -1 : 1;
     const pa = parseServerName(a.name);
     const pb = parseServerName(b.name);
     return pa.country.localeCompare(pb.country) || pa.city.localeCompare(pb.city);
@@ -307,9 +344,15 @@ function populateDropdown(servers) {
     const item = document.createElement("li");
     const link = document.createElement("a");
     link.href = "#";
+    const ping =
+      server.pingT === undefined
+        ? ""
+        : server.pingT > 0
+        ? ` <span>- ${Math.round(server.pingT)} ms</span>`
+        : " <span>- unreachable</span>";
     link.innerHTML = `${server.name}${
       server.sponsorName ? ` <span>(${server.sponsorName})</span>` : ""
-    }`;
+    }${ping}`;
     link.addEventListener("click", () => selectServer(server));
     item.appendChild(link);
     serverList.appendChild(item);
@@ -335,6 +378,7 @@ function startRenderingLoop() {
   const selectedServer = serverSelector.querySelector("#selected-server");
   const sponsor = serverSelector.querySelector("#sponsor");
   const startButton = document.querySelector("#start-button");
+  const findClosestButton = document.querySelector("#find-closest");
   const privacyWarning = document.querySelector("#privacy-warning");
 
   const gauges = document.querySelectorAll("#download-gauge, #upload-gauge");
@@ -370,6 +414,8 @@ function startRenderingLoop() {
 
     // Disable the server selector while test is running
     serverSelector.classList.toggle("disabled", testState.state === RUNNING);
+    findClosestButton.disabled =
+      testState.state === RUNNING || testState.pingingServers;
 
     // Show selected server
     if (testState.selectedServerDirty) {

@@ -160,6 +160,30 @@
     }
   }
 
+  /* Small link-style button that pings all servers */
+  & > button.find-closest {
+    display: block;
+    margin: 1rem auto 0 auto;
+    padding: 0.4rem 1.2rem;
+    font-size: 1.6rem;
+    color: var(--theme-green);
+    background: none;
+    border: 1px solid var(--server-selector-border-color);
+    border-radius: 0.8rem;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      border-color: var(--server-selector-hover-border-color);
+    }
+    &:disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
+    &.hidden {
+      display: none;
+    }
+  }
+
   /* Styling for the sponsor text under the dropdown */
   & > p.sponsor {
     margin: 1rem 0 5rem 0;
