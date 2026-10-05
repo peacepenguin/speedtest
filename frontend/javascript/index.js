@@ -218,7 +218,7 @@ function findClosestServer() {
   const button = document.querySelector("#find-closest");
   if (testState.state === RUNNING || testState.pingingServers) return;
   testState.pingingServers = true;
-  button.textContent = "Pinging servers...";
+  button.textContent = "Pinging...";
 
   const finder = new Speedtest();
   finder.addTestPoints(testState.servers);
@@ -241,7 +241,12 @@ function findClosestServer() {
 function hookUpFindClosestButton() {
   const button = document.querySelector("#find-closest");
   button.classList.remove("hidden");
-  button.addEventListener("click", findClosestServer);
+  button.addEventListener("click", (event) => {
+    // The button lives inside the server selector, whose click handler would
+    // otherwise toggle the dropdown open.
+    event.stopPropagation();
+    findClosestServer();
+  });
 }
 
 /**
