@@ -73,6 +73,23 @@
       </div>
     </div>
 
+    <table class="latency-summary hidden" id="latency-summary">
+      <caption>Latency and jitter under load</caption>
+      <thead>
+        <tr><th></th><th>Idle</th><th>Download</th><th>Upload</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>Latency</th>
+          <td id="lat-idle">--</td><td id="lat-dl">--</td><td id="lat-ul">--</td>
+        </tr>
+        <tr>
+          <th>Jitter</th>
+          <td id="jit-idle">--</td><td id="jit-dl">--</td><td id="jit-ul">--</td>
+        </tr>
+      </tbody>
+    </table>
+
     <button class="small inverted hidden" id="share-results">
       Share results
     </button>

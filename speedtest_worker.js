@@ -11,6 +11,10 @@ let dlStatus = ""; // download speed in megabit/s with 2 decimal digits
 let ulStatus = ""; // upload speed in megabit/s with 2 decimal digits
 let pingStatus = ""; // ping in milliseconds with 2 decimal digits
 let jitterStatus = ""; // jitter in milliseconds with 2 decimal digits
+let dlPingStatus = ""; // average latency in milliseconds measured during the download test (loaded_ping)
+let dlJitterStatus = ""; // jitter in milliseconds measured during the download test (loaded_ping)
+let ulPingStatus = ""; // average latency in milliseconds measured during the upload test (loaded_ping)
+let ulJitterStatus = ""; // jitter in milliseconds measured during the upload test (loaded_ping)
 let clientIp = ""; // client's IP address as reported by getIP.php
 let dlProgress = 0; //progress of download test 0-1
 let ulProgress = 0; //progress of upload test 0-1
@@ -59,6 +63,7 @@ let settings = {
 	xhr_ul_blob_megabytes: 20, //size in megabytes of the upload blobs sent in the upload test (forced to 4 on chrome mobile)
 	garbagePhp_chunkSize: 100, // size of chunks sent by garbage.php (can be different if enable_quirks is active)
 	enable_quirks: true, // enable quirks for specific browsers. currently it overrides settings to optimize for specific browsers, unless they are already being overridden with the start command
+	loaded_ping: false, // if enabled, latency and jitter are also measured (against url_ping) while the download and upload tests are running
 	ping_allowPerformanceApi: true, // if enabled, the ping test will attempt to calculate the ping more precisely using the Performance API. Currently works perfectly in Chrome, badly in Edge, and not at all in Firefox. If Performance API is not supported or the result is obviously wrong, a fallback is provided.
 	overheadCompensationFactor: 1.06, //can be changed to compensate for transport overhead. (see doc.md for some other values)
 	useMebibits: false, //if set to true, speed will be reported in mebibits/s instead of megabits/s
@@ -99,6 +104,10 @@ this.addEventListener("message", function(e) {
 				pingStatus: pingStatus,
 				clientIp: clientIp,
 				jitterStatus: jitterStatus,
+				dlPingStatus: dlPingStatus,
+				dlJitterStatus: dlJitterStatus,
+				ulPingStatus: ulPingStatus,
+				ulJitterStatus: ulJitterStatus,
 				dlProgress: dlProgress,
 				ulProgress: ulProgress,
 				pingProgress: pingProgress,
@@ -144,6 +153,12 @@ this.addEventListener("message", function(e) {
 						settings.xhr_dlMultistream = 5;
 					}
 				}
+			}
+			if (settings.loaded_ping) {
+				// browsers allow 6 connections per host over HTTP/1.1. Keep one free so the latency requests
+				// made during the transfer don't queue behind the test streams
+				if (settings.xhr_dlMultistream > 5) settings.xhr_dlMultistream = 5;
+				if (settings.xhr_ulMultistream > 5) settings.xhr_ulMultistream = 5;
 			}
 			if (/Edge.(\d+\.\d+)/i.test(ua)) {
 				if (typeof s.forceIE11Workaround === "undefined") {
@@ -207,7 +222,14 @@ this.addEventListener("message", function(e) {
 							return;
 						} else dRun = true;
 						testState = 1;
-						dlTest(runNextTest);
+						const stopDlPing = startLoadedPing(function(ping, jitter) {
+							dlPingStatus = ping;
+							dlJitterStatus = jitter;
+						});
+						dlTest(function() {
+							stopDlPing();
+							runNextTest();
+						});
 					}
 					break;
 				case "U":
@@ -218,7 +240,14 @@ this.addEventListener("message", function(e) {
 							return;
 						} else uRun = true;
 						testState = 3;
-						ulTest(runNextTest);
+						const stopUlPing = startLoadedPing(function(ping, jitter) {
+							ulPingStatus = ping;
+							ulJitterStatus = jitter;
+						});
+						ulTest(function() {
+							stopUlPing();
+							runNextTest();
+						});
 					}
 					break;
 				case "P":
@@ -249,6 +278,7 @@ this.addEventListener("message", function(e) {
         if (testState >= 4) return;
 		tlog("manually aborted");
 		clearRequests(); // stop all xhr activity
+		stopLoadedPings();
 		runNextTest = null;
 		if (interval) clearInterval(interval); // clear timer if present
 		if (settings.telemetry_level > 1) sendTelemetry(function() {});
@@ -257,6 +287,10 @@ this.addEventListener("message", function(e) {
 		ulStatus = "";
 		pingStatus = "";
 		jitterStatus = "";
+		dlPingStatus = "";
+		dlJitterStatus = "";
+		ulPingStatus = "";
+		ulJitterStatus = "";
         clientIp = "";
 		dlProgress = 0;
 		ulProgress = 0;
@@ -687,6 +721,57 @@ function pingTest(done) {
 		xhr[0].send();
 	}.bind(this);
 	doPing(); // start first ping
+}
+/*
+	Measures latency and jitter while a download or upload test is running (when settings.loaded_ping is on).
+	It sends one small request at a time against url_ping on its own XHR, so it never interferes with the main test's requests.
+	The result is the mean round trip time and the mean absolute difference between consecutive round trips (jitter).
+	onUpdate(ping, jitter) is called after each sample with strings of 2 decimals. Returns a function that stops the measurement.
+	Note: when the browser uses HTTP/1.1, the requests may queue behind the test streams, which makes the latency look worse than on HTTP/2.
+*/
+const loadedPingStops = [];
+function stopLoadedPings() {
+	while (loadedPingStops.length) loadedPingStops.pop()();
+}
+function startLoadedPing(onUpdate) {
+	if (!settings.loaded_ping) return function() {};
+	let active = true;
+	let req = null;
+	let count = 0;
+	let sum = 0;
+	let jitterSum = 0;
+	let prev = null;
+	let timer = null;
+	const next = function() {
+		if (!active) return;
+		const t = performance.now();
+		req = new XMLHttpRequest();
+		req.onload = function() {
+			if (!active) return;
+			const rtt = performance.now() - t;
+			count++;
+			sum += rtt;
+			if (prev !== null) jitterSum += Math.abs(rtt - prev);
+			prev = rtt;
+			onUpdate((sum / count).toFixed(2), count > 1 ? (jitterSum / (count - 1)).toFixed(2) : "0.00");
+			timer = setTimeout(next, 100);
+		};
+		req.onerror = function() {
+			if (active) timer = setTimeout(next, 250); // a failed sample is ignored
+		};
+		req.open("GET", settings.url_ping + url_sep(settings.url_ping) + (settings.mpot ? "cors=true&" : "") + "r=" + Math.random(), true);
+		req.send();
+	};
+	const stop = function() {
+		active = false;
+		if (timer) clearTimeout(timer);
+		try {
+			req.abort();
+		} catch (e) {}
+	};
+	loadedPingStops.push(stop);
+	next();
+	return stop;
 }
 // telemetry
 function sendTelemetry(done) {

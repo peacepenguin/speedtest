@@ -258,3 +258,45 @@ div.gauge {
   grid-area: ping;
   justify-content: end;
 }
+
+/* Latency and jitter at idle, during download and during upload */
+
+table.latency-summary {
+  margin: 0 auto 3rem auto;
+  border-collapse: collapse;
+  font-size: 1.8rem;
+  letter-spacing: -0.05rem;
+  color: var(--ping-and-jitter-primary-text-color);
+
+  & caption {
+    margin-bottom: 1rem;
+    font-weight: 700;
+    color: var(--ping-and-jitter-secondary-text-color);
+  }
+  & th,
+  & td {
+    padding: 0.4rem 1.6rem;
+    text-align: right;
+  }
+  & thead th,
+  & tbody th {
+    font-weight: 700;
+    color: var(--ping-and-jitter-secondary-text-color);
+  }
+  & tbody th {
+    text-align: left;
+  }
+
+  &.hidden {
+    display: none;
+  }
+
+  @media screen and (max-width: 500px) {
+    font-size: 1.5rem;
+
+    & th,
+    & td {
+      padding: 0.4rem 0.8rem;
+    }
+  }
+}

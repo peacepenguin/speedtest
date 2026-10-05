@@ -39,6 +39,8 @@ window.addEventListener("DOMContentLoaded", async () => {
  */
 function createSpeedtest() {
   testState.speedtest = new Speedtest();
+  // Also measure latency and jitter while downloading and uploading
+  testState.speedtest.setParameter("loaded_ping", true);
   testState.speedtest.onupdate = (data) => {
     testState.testData = data;
     testState.testDataDirty = true;
@@ -397,6 +399,7 @@ function startRenderingLoop() {
   const pingAndJitter = document.querySelectorAll(".ping, .jitter");
   const ping = document.querySelector("#ping");
   const jitter = document.querySelector("#jitter");
+  const latencySummary = document.querySelector("#latency-summary");
   const shareResults = document.querySelector("#share-results");
   const copyLink = document.querySelector("#copy-link");
   const resultsImage = document.querySelector("#results");
@@ -505,6 +508,17 @@ function startRenderingLoop() {
       uploadText.textContent = numberToText(testState.testData.ulStatus);
       ping.textContent = numberToText(testState.testData.pingStatus);
       jitter.textContent = numberToText(testState.testData.jitterStatus);
+
+      // Latency and jitter at idle, during download and during upload
+      const d = testState.testData;
+      const ms = (v) => (v ? `${numberToText(v)} ms` : "--");
+      latencySummary.classList.toggle("hidden", !d.pingStatus);
+      document.querySelector("#lat-idle").textContent = ms(d.pingStatus);
+      document.querySelector("#jit-idle").textContent = ms(d.jitterStatus);
+      document.querySelector("#lat-dl").textContent = ms(d.dlPingStatus);
+      document.querySelector("#jit-dl").textContent = ms(d.dlJitterStatus);
+      document.querySelector("#lat-ul").textContent = ms(d.ulPingStatus);
+      document.querySelector("#jit-ul").textContent = ms(d.ulJitterStatus);
 
       // Set user's IP and provider
       if (testState.testData.clientIp) {
