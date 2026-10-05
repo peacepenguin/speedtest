@@ -31,6 +31,10 @@ CREATE TABLE `speedtest_users` (
   `ul` text,
   `ping` text,
   `jitter` text,
+  `dl_ping` text,
+  `dl_jitter` text,
+  `ul_ping` text,
+  `ul_jitter` text,
   `log` longtext
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

@@ -4,6 +4,12 @@ require_once 'idObfuscation.php';
 
 define('TELEMETRY_SETTINGS_FILE', 'telemetry_settings.php');
 
+// Columns of speedtest_users. The extended list adds latency/jitter measured
+// during the download and upload tests; databases created before those
+// columns existed are still supported by falling back to the base list.
+define('SPEEDTEST_COLUMNS_BASE', 'id, timestamp, ip, ispinfo, ua, lang, dl, ul, ping, jitter, log, extra');
+define('SPEEDTEST_COLUMNS_EXTENDED', SPEEDTEST_COLUMNS_BASE.', dl_ping, dl_jitter, ul_ping, ul_jitter');
+
 /**
  * @return PDO|false
  */
@@ -135,9 +141,29 @@ function getPdo($returnErrorMessage = false)
                 `ul`        text,
                 `ping`      text,
                 `jitter`    text,
-                `log`       longtext
+                `log`       longtext,
+                `dl_ping`   text,
+                `dl_jitter` text,
+                `ul_ping`   text,
+                `ul_jitter` text
                 );
             ');
+
+            // Databases created by older versions lack the latency/jitter
+            // under load columns: add them. If this fails, inserts and
+            // selects fall back to the original columns.
+            try {
+                $existing = [];
+                foreach ($pdo->query('PRAGMA table_info(`speedtest_users`)') as $column) {
+                    $existing[] = $column['name'];
+                }
+                foreach (['dl_ping', 'dl_jitter', 'ul_ping', 'ul_jitter'] as $column) {
+                    if (!in_array($column, $existing, true)) {
+                        $pdo->exec('ALTER TABLE `speedtest_users` ADD COLUMN `'.$column.'` text');
+                    }
+                }
+            } catch (Exception $e) {
+            }
 
             return $pdo;
         }
@@ -189,7 +215,7 @@ function isObfuscationEnabled()
 /**
  * @return string|false returns the id of the inserted column or false on error if returnErrorMessage is false or a error message if returnErrorMessage is true
  */
-function insertSpeedtestUser($ip, $ispinfo, $extra, $ua, $lang, $dl, $ul, $ping, $jitter, $log, $returnExceptionOnError = false)
+function insertSpeedtestUser($ip, $ispinfo, $extra, $ua, $lang, $dl, $ul, $ping, $jitter, $log, $returnExceptionOnError = false, $loadedPing = null)
 {
     $pdo = getPdo();
     if (!($pdo instanceof PDO)) {
@@ -200,15 +226,38 @@ function insertSpeedtestUser($ip, $ispinfo, $extra, $ua, $lang, $dl, $ul, $ping,
     }
 
     try {
-        $stmt = $pdo->prepare(
-            'INSERT INTO speedtest_users
+        $id = false;
+        if (is_array($loadedPing)) {
+            // Newer schema: also store latency and jitter measured under load.
+            // Databases created before these columns existed reject the
+            // statement, in which case we fall back to the original columns.
+            try {
+                $stmt = $pdo->prepare(
+                    'INSERT INTO speedtest_users
+        (ip,ispinfo,extra,ua,lang,dl,ul,ping,jitter,log,dl_ping,dl_jitter,ul_ping,ul_jitter)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+                );
+                $stmt->execute([
+                    $ip, $ispinfo, $extra, $ua, $lang, $dl, $ul, $ping, $jitter, $log,
+                    $loadedPing['dl_ping'], $loadedPing['dl_jitter'],
+                    $loadedPing['ul_ping'], $loadedPing['ul_jitter'],
+                ]);
+                $id = $pdo->lastInsertId();
+            } catch (Exception $e) {
+                $id = false;
+            }
+        }
+        if (false === $id) {
+            $stmt = $pdo->prepare(
+                'INSERT INTO speedtest_users
         (ip,ispinfo,extra,ua,lang,dl,ul,ping,jitter,log)
         VALUES (?,?,?,?,?,?,?,?,?,?)'
-        );
-        $stmt->execute([
-            $ip, $ispinfo, $extra, $ua, $lang, $dl, $ul, $ping, $jitter, $log
-        ]);
-        $id = $pdo->lastInsertId();
+            );
+            $stmt->execute([
+                $ip, $ispinfo, $extra, $ua, $lang, $dl, $ul, $ping, $jitter, $log
+            ]);
+            $id = $pdo->lastInsertId();
+        }
     } catch (Exception $e) {
 		if($returnExceptionOnError){
 			return $e;
@@ -247,15 +296,24 @@ function getSpeedtestUserById($id,$returnExceptionOnError = false)
     }
 
     try {
-        $stmt = $pdo->prepare(
-            'SELECT
-            id, timestamp, ip, ispinfo, ua, lang, dl, ul, ping, jitter, log, extra
-            FROM speedtest_users
-            WHERE id = :id'
-        );
-        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
-        $stmt->execute();
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        // Prefer the columns with latency/jitter under load; fall back to the
+        // original schema when the database doesn't have them yet.
+        $row = null;
+        foreach ([SPEEDTEST_COLUMNS_EXTENDED, SPEEDTEST_COLUMNS_BASE] as $attempt => $columns) {
+            try {
+                $stmt = $pdo->prepare(
+                    'SELECT '.$columns.' FROM speedtest_users WHERE id = :id'
+                );
+                $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+                $stmt->execute();
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                break;
+            } catch (Exception $e) {
+                if ($attempt === 1) {
+                    throw $e;
+                }
+            }
+        }
     } catch (Exception $e) {
 		if($returnExceptionOnError){
 			return $e;
@@ -288,19 +346,28 @@ function getLatestSpeedtestUsers()
     require TELEMETRY_SETTINGS_FILE;
 	
     try {
-		$sql = 'SELECT ';
-		
-		if('mssql' === $db_type) {$sql .= ' TOP(100) ';}
-		
-		$sql .= ' id, timestamp, ip, ispinfo, ua, lang, dl, ul, ping, jitter, log, extra
+        $rows = null;
+        foreach ([SPEEDTEST_COLUMNS_EXTENDED, SPEEDTEST_COLUMNS_BASE] as $attempt => $columns) {
+            $sql = 'SELECT ';
+
+            if('mssql' === $db_type) {$sql .= ' TOP(100) ';}
+
+            $sql .= $columns.'
             FROM speedtest_users
             ORDER BY timestamp DESC ';
-			
-		if('mssql' !== $db_type) {$sql .= ' LIMIT 100 ';}
-		
-        $stmt = $pdo->query($sql);
 
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if('mssql' !== $db_type) {$sql .= ' LIMIT 100 ';}
+
+            try {
+                $stmt = $pdo->query($sql);
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                break;
+            } catch (Exception $e) {
+                if ($attempt === 1) {
+                    throw $e;
+                }
+            }
+        }
 
         foreach ($rows as $i => $row) {
             $rows[$i]['id_formatted'] = $row['id'];

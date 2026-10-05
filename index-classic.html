@@ -36,6 +36,7 @@
 		//INITIALIZE SPEEDTEST
 		var s = new Speedtest(); //create speed test object
 		s.setParameter("telemetry_level", "basic"); //enable basic telemetry (for results sharing)
+		s.setParameter("loaded_ping", true); //also measure latency and jitter during the download and upload tests
 
 		//SERVER AUTO SELECTION
 		function initServers() {
@@ -212,6 +213,14 @@
 			drawMeter(I("ulMeter"), mbpsToAmount(Number(uiData.ulStatus * (status == 3 ? oscillate() : 1))), meterBk, ulColor, Number(uiData.ulProgress), progColor);
 			I("pingText").textContent = format(uiData.pingStatus);
 			I("jitText").textContent = format(uiData.jitterStatus);
+			var showLoaded = uiData.pingStatus !== "";
+			I("loadedLatency").style.display = showLoaded ? "" : "none";
+			I("latIdle").textContent = format(uiData.pingStatus);
+			I("jitIdle").textContent = format(uiData.jitterStatus);
+			I("latDl").textContent = uiData.dlPingStatus ? format(uiData.dlPingStatus) : "--";
+			I("jitDl").textContent = uiData.dlJitterStatus ? format(uiData.dlJitterStatus) : "--";
+			I("latUl").textContent = uiData.ulPingStatus ? format(uiData.ulPingStatus) : "--";
+			I("jitUl").textContent = uiData.ulJitterStatus ? format(uiData.ulJitterStatus) : "--";
 		}
 		function oscillate() {
 			return 1 + 0.02 * Math.sin(Date.now() / 100);
@@ -231,6 +240,7 @@
 			I("ulText").textContent = "";
 			I("pingText").textContent = "";
 			I("jitText").textContent = "";
+			I("loadedLatency").style.display = "none";
 			I("ip").textContent = "";
 		}
 	</script>
@@ -558,6 +568,12 @@
 					<div class="unit">Mbit/s</div>
 				</div>
 			</div>
+			<table id="loadedLatency" style="display:none;margin:0 auto 1em auto;border-collapse:collapse;color:#6060AA">
+				<caption style="font-weight:bold;padding-bottom:0.3em">Ping / jitter under load (ms)</caption>
+				<tr style="font-weight:bold"><td></td><td style="padding:0 0.7em">Idle</td><td style="padding:0 0.7em">Download</td><td style="padding:0 0.7em">Upload</td></tr>
+				<tr><td style="font-weight:bold">Ping</td><td id="latIdle"></td><td id="latDl" style="color:#6060AA"></td><td id="latUl"></td></tr>
+				<tr><td style="font-weight:bold">Jitter</td><td id="jitIdle"></td><td id="jitDl"></td><td id="jitUl"></td></tr>
+			</table>
 			<div id="ipArea">
 				<span id="ip"></span>
 			</div>

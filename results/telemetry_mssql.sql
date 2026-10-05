@@ -22,6 +22,10 @@ CREATE TABLE [dbo].[speedtest_users](
 	[ul] [nvarchar](max) NULL,
 	[ping] [nvarchar](max) NULL,
 	[jitter] [nvarchar](max) NULL,
+	[dl_ping] [nvarchar](max) NULL,
+	[dl_jitter] [nvarchar](max) NULL,
+	[ul_ping] [nvarchar](max) NULL,
+	[ul_jitter] [nvarchar](max) NULL,
 	[log] [nvarchar](max) NULL,
  CONSTRAINT [PK_speedtest_users] PRIMARY KEY CLUSTERED
 (

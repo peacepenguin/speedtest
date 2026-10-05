@@ -58,5 +58,13 @@ if (!is_array($speedtest)) {
     echo '{}';
 } else {
     $speedtest = formatSpeedtestData($speedtest);
-    echo json_encode(array('timestamp'=>$speedtest['timestamp'],'download'=>$speedtest['dl'],'upload'=>$speedtest['ul'],'ping'=>$speedtest['ping'],'jitter'=>$speedtest['jitter'],'ispinfo'=>$speedtest['ispinfo']));
+    $response = array('timestamp'=>$speedtest['timestamp'],'download'=>$speedtest['dl'],'upload'=>$speedtest['ul'],'ping'=>$speedtest['ping'],'jitter'=>$speedtest['jitter'],'ispinfo'=>$speedtest['ispinfo']);
+    // latency and jitter under load, only when the database has them
+    if (isset($speedtest['dl_ping'])) {
+        $response['download_ping'] = format($speedtest['dl_ping']);
+        $response['download_jitter'] = format($speedtest['dl_jitter']);
+        $response['upload_ping'] = format($speedtest['ul_ping']);
+        $response['upload_jitter'] = format($speedtest['ul_jitter']);
+    }
+    echo json_encode($response);
 }

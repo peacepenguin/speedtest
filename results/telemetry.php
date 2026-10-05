@@ -17,6 +17,13 @@ $ul = $_POST['ul'];
 $ping = $_POST['ping'];
 $jitter = $_POST['jitter'];
 $log = $_POST['log'];
+// latency and jitter measured during the download and upload tests (optional)
+$loadedPing = [
+    'dl_ping' => isset($_POST['dl_ping']) ? $_POST['dl_ping'] : null,
+    'dl_jitter' => isset($_POST['dl_jitter']) ? $_POST['dl_jitter'] : null,
+    'ul_ping' => isset($_POST['ul_ping']) ? $_POST['ul_ping'] : null,
+    'ul_jitter' => isset($_POST['ul_jitter']) ? $_POST['ul_jitter'] : null,
+];
 
 if (isset($redact_ip_addresses) && true === $redact_ip_addresses) {
     $ip = '0.0.0.0';
@@ -35,7 +42,7 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0, s-maxage=
 header('Cache-Control: post-check=0, pre-check=0', false);
 header('Pragma: no-cache');
 
-$id = insertSpeedtestUser($ip, $ispinfo, $extra, $ua, $lang, $dl, $ul, $ping, $jitter, $log);
+$id = insertSpeedtestUser($ip, $ispinfo, $extra, $ua, $lang, $dl, $ul, $ping, $jitter, $log, false, $loadedPing);
 if (false === $id) {
     exit(1);
 }

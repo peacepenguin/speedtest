@@ -808,11 +808,17 @@ function sendTelemetry(done) {
 		fd.append("ul", ulStatus);
 		fd.append("ping", pingStatus);
 		fd.append("jitter", jitterStatus);
+		if (settings.loaded_ping) {
+			fd.append("dl_ping", dlPingStatus);
+			fd.append("dl_jitter", dlJitterStatus);
+			fd.append("ul_ping", ulPingStatus);
+			fd.append("ul_jitter", ulJitterStatus);
+		}
 		fd.append("log", settings.telemetry_level > 1 ? log : "");
 		fd.append("extra", settings.telemetry_extra);
 		xhr.send(fd);
 	} catch (ex) {
-		const postData = "extra=" + encodeURIComponent(settings.telemetry_extra) + "&ispinfo=" + encodeURIComponent(JSON.stringify(telemetryIspInfo)) + "&dl=" + encodeURIComponent(dlStatus) + "&ul=" + encodeURIComponent(ulStatus) + "&ping=" + encodeURIComponent(pingStatus) + "&jitter=" + encodeURIComponent(jitterStatus) + "&log=" + encodeURIComponent(settings.telemetry_level > 1 ? log : "");
+		const postData = "extra=" + encodeURIComponent(settings.telemetry_extra) + "&ispinfo=" + encodeURIComponent(JSON.stringify(telemetryIspInfo)) + "&dl=" + encodeURIComponent(dlStatus) + "&ul=" + encodeURIComponent(ulStatus) + "&ping=" + encodeURIComponent(pingStatus) + "&jitter=" + encodeURIComponent(jitterStatus) + (settings.loaded_ping ? "&dl_ping=" + encodeURIComponent(dlPingStatus) + "&dl_jitter=" + encodeURIComponent(dlJitterStatus) + "&ul_ping=" + encodeURIComponent(ulPingStatus) + "&ul_jitter=" + encodeURIComponent(ulJitterStatus) : "") + "&log=" + encodeURIComponent(settings.telemetry_level > 1 ? log : "");
 		xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
 		xhr.send(postData);
 	}

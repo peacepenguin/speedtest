@@ -140,6 +140,16 @@ header('Pragma: no-cache');
                             <th>Jitter</th>
                             <td><?= htmlspecialchars($speedtest['jitter'], ENT_HTML5, 'UTF-8') ?></td>
                         </tr>
+                        <?php if (isset($speedtest['dl_ping'])) { ?>
+                        <tr>
+                            <th>Ping / jitter during download</th>
+                            <td><?= htmlspecialchars($speedtest['dl_ping'], ENT_HTML5, 'UTF-8') ?> / <?= htmlspecialchars($speedtest['dl_jitter'], ENT_HTML5, 'UTF-8') ?></td>
+                        </tr>
+                        <tr>
+                            <th>Ping / jitter during upload</th>
+                            <td><?= htmlspecialchars($speedtest['ul_ping'], ENT_HTML5, 'UTF-8') ?> / <?= htmlspecialchars($speedtest['ul_jitter'], ENT_HTML5, 'UTF-8') ?></td>
+                        </tr>
+                        <?php } ?>
                         <tr>
                             <th>Log</th>
                             <td><?= htmlspecialchars($speedtest['log'], ENT_HTML5, 'UTF-8') ?></td>
