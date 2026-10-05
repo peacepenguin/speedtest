@@ -657,7 +657,7 @@ function drawClassicImage($speedtest)
     $SCALE = 1.25;
     $SMALL_SEP = 8 * $SCALE;
     $WIDTH = 400 * $SCALE;
-    $LOADED_ROW = $data['hasLoaded'] ? 22 * $SCALE : 0; // extra row for latency and jitter under load
+    $LOADED_ROW = $data['hasLoaded'] ? 34 * $SCALE : 0; // extra rows for latency and jitter under load
     $HEIGHT = 229 * $SCALE + $LOADED_ROW;
     $im = imagecreatetruecolor($WIDTH, $HEIGHT);
     $BACKGROUND_COLOR = imagecolorallocate($im, 255, 255, 255);
@@ -771,12 +771,15 @@ function drawClassicImage($speedtest)
     // ping and jitter under load, below the download and upload meters
     if ($data['hasLoaded']) {
         $loadedText = [
-            [$POSITION_X_DL, 'Ping '.$data['dl_ping'].' ms  ·  Jitter '.$data['dl_jitter'].' ms'],
-            [$POSITION_X_UL, 'Ping '.$data['ul_ping'].' ms  ·  Jitter '.$data['ul_jitter'].' ms'],
+            [$POSITION_X_DL, 'Ping '.$data['dl_ping'].' ms', 'Jitter '.$data['dl_jitter'].' ms'],
+            [$POSITION_X_UL, 'Ping '.$data['ul_ping'].' ms', 'Jitter '.$data['ul_jitter'].' ms'],
         ];
-        foreach ($loadedText as list($lx, $string)) {
-            $bbox = imageftbbox($FONT_ISP_SIZE, 0, $FONT_ISP, $string);
-            imagefttext($im, $FONT_ISP_SIZE, 0, $lx - $bbox[4] / 2, 190 * $SCALE, $TEXT_COLOR_ISP, $FONT_ISP, $string);
+        // one line each for ping and jitter so the two columns cannot run into each other
+        foreach ($loadedText as list($lx, $pingString, $jitterString)) {
+            foreach ([$pingString, $jitterString] as $line => $string) {
+                $bbox = imageftbbox($FONT_ISP_SIZE, 0, $FONT_ISP, $string);
+                imagefttext($im, $FONT_ISP_SIZE, 0, $lx - $bbox[4] / 2, (189 + 13 * $line) * $SCALE, $TEXT_COLOR_ISP, $FONT_ISP, $string);
+            }
         }
     }
     // isp
