@@ -15,6 +15,8 @@ const SS = 3;
 
 const WIDTH = 800;
 const HEIGHT = 480;
+// extra height of the modern image for the panel with latency and jitter under load
+const LOADED_PANEL_EXTRA = 90;
 
 // Palette taken from frontend/styling/colors.css, so the image matches the
 // modern frontend rather than inventing a second look for the same project.
@@ -426,6 +428,17 @@ function formatSpeedtestDataForImage($speedtest)
     $speedtest['dl'] = format($speedtest['dl']);
     $speedtest['ul'] = format($speedtest['ul']);
     $speedtest['ping'] = format($speedtest['ping']);
+    // latency and jitter measured during the download and upload tests; absent
+    // for results stored before those were recorded
+    $speedtest['hasLoaded'] = false;
+    foreach (['dl_ping', 'dl_jitter', 'ul_ping', 'ul_jitter'] as $key) {
+        if (isset($speedtest[$key]) && is_numeric($speedtest[$key])) {
+            $speedtest[$key] = format($speedtest[$key]);
+            $speedtest['hasLoaded'] = true;
+        } else {
+            $speedtest[$key] = '--';
+        }
+    }
     $speedtest['jitter'] = format($speedtest['jitter']);
     $speedtest['family'] = addressFamily($speedtest['ip']);
     list($speedtest['date'], $speedtest['time']) = splitTimestamp($speedtest['timestamp']);
@@ -459,8 +472,12 @@ function drawModernImage($speedtest)
 {
     $data = formatSpeedtestDataForImage($speedtest);
 
+    // results with latency and jitter under load get an extra panel, which
+    // makes the image taller; older results keep the original size
+    $extra = $data['hasLoaded'] ? LOADED_PANEL_EXTRA : 0;
+
     $W = WIDTH * SS;
-    $H = HEIGHT * SS;
+    $H = (HEIGHT + $extra) * SS;
     $im = imagecreatetruecolor($W, $H);
     imagealphablending($im, false);
     imagesavealpha($im, true);
@@ -553,9 +570,33 @@ function drawModernImage($speedtest)
         text($im, $tx + $vw + 7 * SS, $cy + 25 * SS, 14 * SS, $FONT_LIGHT, $dim, 'ms');
     }
 
+    // ---- ping and jitter under load -----------------------------------
+    if ($data['hasLoaded']) {
+        $lTop = 388 * SS;
+        $lBottom = ($lTop / SS + LOADED_PANEL_EXTRA - 12) * SS;
+        panel($im, $M, $lTop, $W - $M, $lBottom, $radius, $panelFill, $panelEdge);
+        imageline($im, (int) $mid, (int) ($lTop + 18 * SS), (int) $mid, (int) ($lBottom - 18 * SS), $panelEdge);
+
+        $loaded = [
+            [$M, 'PING / JITTER DURING DOWNLOAD', C_DOWNLOAD, $data['dl_ping'], $data['dl_jitter']],
+            [$mid, 'PING / JITTER DURING UPLOAD', C_UPLOAD, $data['ul_ping'], $data['ul_jitter']],
+        ];
+        foreach ($loaded as list($half, $label, $rgb, $latency, $jit)) {
+            $lx = $half + 28 * SS;
+            trackedText($im, $lx, $lTop + 28 * SS, 10 * SS, $FONT_BOLD, col($im, $rgb), $label, 2 * SS);
+            $vy = $lTop + 66 * SS;
+            $vw = text($im, $lx, $vy, 27 * SS, $FONT_LIGHT, $white, $latency);
+            $lx += $vw + 6 * SS;
+            $lx += text($im, $lx, $vy, 13 * SS, $FONT_LIGHT, $dim, 'ms') + 14 * SS;
+            $lx += text($im, $lx, $vy, 27 * SS, $FONT_LIGHT, $dim, '/') + 14 * SS;
+            $vw = text($im, $lx, $vy, 27 * SS, $FONT_LIGHT, $white, $jit);
+            text($im, $lx + $vw + 6 * SS, $vy, 13 * SS, $FONT_LIGHT, $dim, 'ms');
+        }
+    }
+
     // ---- footer --------------------------------------------------------
-    $fTop = 390 * SS;
-    $fBottom = 456 * SS;
+    $fTop = (390 + $extra) * SS;
+    $fBottom = (456 + $extra) * SS;
     panel($im, $M, $fTop, $W - $M, $fBottom, $radius, $panelFill, $panelEdge);
 
     $fx = $M + 22 * SS;
@@ -578,11 +619,12 @@ function drawModernImage($speedtest)
     text($im, $wmX, $fTop + 48 * SS, 15 * SS, $FONT_BOLD, col($im, C_TEXT_DIM), 'LibreSpeed', 'right');
 
     // ---- scale down ----------------------------------------------------
-    $out = imagecreatetruecolor(WIDTH, HEIGHT);
+    $outH = HEIGHT + $extra;
+    $out = imagecreatetruecolor(WIDTH, $outH);
     imagealphablending($out, false);
     imagesavealpha($out, true);
-    imagefilledrectangle($out, 0, 0, WIDTH, HEIGHT, imagecolorallocatealpha($out, 0, 0, 0, 127));
-    imagecopyresampled($out, $im, 0, 0, 0, 0, WIDTH, HEIGHT, $W, $H);
+    imagefilledrectangle($out, 0, 0, WIDTH, $outH, imagecolorallocatealpha($out, 0, 0, 0, 127));
+    imagecopyresampled($out, $im, 0, 0, 0, 0, WIDTH, $outH, $W, $H);
     imagedestroy($im);
 
     header('Content-Type: image/png');
@@ -615,7 +657,8 @@ function drawClassicImage($speedtest)
     $SCALE = 1.25;
     $SMALL_SEP = 8 * $SCALE;
     $WIDTH = 400 * $SCALE;
-    $HEIGHT = 229 * $SCALE;
+    $LOADED_ROW = $data['hasLoaded'] ? 22 * $SCALE : 0; // extra row for latency and jitter under load
+    $HEIGHT = 229 * $SCALE + $LOADED_ROW;
     $im = imagecreatetruecolor($WIDTH, $HEIGHT);
     $BACKGROUND_COLOR = imagecolorallocate($im, 255, 255, 255);
 
@@ -675,14 +718,14 @@ function drawClassicImage($speedtest)
     $POSITION_Y_UL_MEASURE = 169 * $SCALE;
 
     $POSITION_X_ISP = 4 * $SCALE;
-    $POSITION_Y_ISP = 205 * $SCALE;
+    $POSITION_Y_ISP = 205 * $SCALE + $LOADED_ROW;
 
-    $SEPARATOR_Y = 211 * $SCALE;
+    $SEPARATOR_Y = 211 * $SCALE + $LOADED_ROW;
 
     $POSITION_X_TIMESTAMP= 4 * $SCALE;
-    $POSITION_Y_TIMESTAMP = 223 * $SCALE;
+    $POSITION_Y_TIMESTAMP = 223 * $SCALE + $LOADED_ROW;
 
-    $POSITION_Y_WATERMARK = 223 * $SCALE;
+    $POSITION_Y_WATERMARK = 223 * $SCALE + $LOADED_ROW;
 
     // configure labels
     $MBPS_TEXT = 'Mbit/s';
@@ -725,6 +768,17 @@ function drawClassicImage($speedtest)
     imagefttext($im, $FONT_LABEL_SIZE_BIG, 0, $POSITION_X_UL - $ulBbox[4] / 2, $POSITION_Y_UL_LABEL, $TEXT_COLOR_LABEL, $FONT_LABEL, $UL_TEXT);
     imagefttext($im, $FONT_METER_SIZE_BIG, 0, $POSITION_X_UL - $ulMeterBbox[4] / 2, $POSITION_Y_UL_METER, $TEXT_COLOR_UL_METER, $FONT_METER, $ul);
     imagefttext($im, $FONT_MEASURE_SIZE_BIG, 0, $POSITION_X_UL - $mbpsBbox[4] / 2, $POSITION_Y_UL_MEASURE, $TEXT_COLOR_MEASURE, $FONT_MEASURE, $MBPS_TEXT);
+    // ping and jitter under load, below the download and upload meters
+    if ($data['hasLoaded']) {
+        $loadedText = [
+            [$POSITION_X_DL, 'Ping '.$data['dl_ping'].' ms  ·  Jitter '.$data['dl_jitter'].' ms'],
+            [$POSITION_X_UL, 'Ping '.$data['ul_ping'].' ms  ·  Jitter '.$data['ul_jitter'].' ms'],
+        ];
+        foreach ($loadedText as list($lx, $string)) {
+            $bbox = imageftbbox($FONT_ISP_SIZE, 0, $FONT_ISP, $string);
+            imagefttext($im, $FONT_ISP_SIZE, 0, $lx - $bbox[4] / 2, 190 * $SCALE, $TEXT_COLOR_ISP, $FONT_ISP, $string);
+        }
+    }
     // isp
     imagefttext($im, $FONT_ISP_SIZE, 0, $POSITION_X_ISP, $POSITION_Y_ISP, $TEXT_COLOR_ISP, $FONT_ISP, $ispinfo);
     // separator
