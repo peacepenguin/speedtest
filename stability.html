@@ -501,6 +501,12 @@
                 if (completed === SPEEDTEST_SERVERS.length) {
                   // populate dropdown
                   I("server").innerHTML = "";
+                  // The server hosting this page is always available as a choice
+                  var localOpt = document.createElement("option");
+                  localOpt.value = "local";
+                  localOpt.textContent = "This server (local)";
+                  if (best === null) localOpt.selected = true;
+                  I("server").appendChild(localOpt);
                   for (var j = 0; j < SPEEDTEST_SERVERS.length; j++) {
                     if (SPEEDTEST_SERVERS[j].pingT <= 0) continue;
                     var opt = document.createElement("option");
@@ -511,8 +517,8 @@
                   }
                   selectedServer = best;
                   serverDiscoveryPending = false;
-                  localServerReady = selectedServer !== null || I("server").options.length > 0;
-                  I("server").disabled = !localServerReady;
+                  localServerReady = true;
+                  I("server").disabled = false;
                   updateStartButtonState();
                 }
               });
@@ -542,7 +548,7 @@
 
       function onServerChange(idx) {
         if (idx === "") return;
-        selectedServer = SPEEDTEST_SERVERS[idx];
+        selectedServer = idx === "local" ? null : SPEEDTEST_SERVERS[idx];
         updateStartButtonState();
       }
 
