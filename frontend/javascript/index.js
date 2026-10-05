@@ -171,11 +171,17 @@ async function applyServerListJSON() {
       typeof globalThis.SPEEDTEST_SERVERS !== "undefined"
         ? globalThis.SPEEDTEST_SERVERS
         : "server-list.json";
-    const servers = Array.isArray(serverSource)
-      ? serverSource
-      : await fetch(serverSource).then((response) => response.json());
+    let servers;
+    if (Array.isArray(serverSource)) {
+      servers = serverSource;
+    } else {
+      // A missing server-list.json (404) or a non-JSON response means a
+      // standalone install: just test against the server hosting this page.
+      const response = await fetch(serverSource);
+      servers = response.ok ? await response.json().catch(() => null) : null;
+    }
     if (!servers || !Array.isArray(servers) || servers.length === 0) {
-      return console.error("Server list is empty or malformed");
+      return useLocalServer();
     }
 
     testState.servers = servers;
@@ -218,7 +224,20 @@ async function applyServerListJSON() {
     });
   } catch (error) {
     console.error("Failed to load server list:", error);
+    useLocalServer();
   }
+}
+
+/**
+ * Standalone mode: no server list available, so test against the server that
+ * served this page, using the default backend paths from speedtest.js.
+ */
+function useLocalServer() {
+  const serverSelector = document.querySelector("div.server-selector");
+  serverSelector.classList.add("single-server");
+  serverSelector.querySelector("#selected-server").textContent =
+    location.hostname;
+  testState.state = READY;
 }
 
 /**
