@@ -68,10 +68,18 @@ test.describe("Modern server selection", () => {
     await serveServerList(page, [remoteServer("Fast", "fast.test"), remoteServer("Slow", "slow.test")]);
     await fakeRemote(page, "fast.test", 50, fast);
     await fakeRemote(page, "slow.test", 900, slow);
-    // make the local backend slower than "Fast" so the closest server is unambiguous
+    // The local backend answers the probe made when the page loads (the first
+    // request) but not the pings of the closest-server check (a non-empty body
+    // counts as a failed ping), so "Fast" is the closest server whatever the
+    // timing of the browser is.
+    let localRequests = 0;
     await page.route("**/backend/empty.php**", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      await route.continue();
+      localRequests++;
+      if (localRequests === 1) {
+        await route.continue();
+      } else {
+        await route.fulfill({ status: 200, body: "not empty" });
+      }
     });
 
     await page.goto(MODERN);
@@ -104,8 +112,8 @@ test.describe("Modern server selection", () => {
     const items = page.locator("ul.servers li");
     await expect(items).toHaveCount(3);
     await expect(items.nth(0)).toContainText(/Fast.*\d+ ms/i);
-    await expect(items.nth(1)).toContainText(/This server \(local\).*\d+ ms/i);
-    await expect(items.nth(2)).toContainText(/Slow.*\d+ ms/i);
+    await expect(items.nth(1)).toContainText(/Slow.*\d+ ms/i);
+    await expect(items.nth(2)).toContainText(/This server \(local\).*unreachable/i);
   });
 
   test("marks servers that do not answer as unreachable", async ({ page }) => {
