@@ -190,23 +190,41 @@ async function applyServerListJSON() {
       return useLocalServer();
     }
 
-    // The server hosting this page is always a choice, unless the list already
+    // The server hosting this page is a choice, unless the list already
     // contains it.
     const local = localServerDefinition();
-    if (!servers.some((s) => s.server === local.server && s.dlURL === local.dlURL)) {
+    let localCandidate = servers.find((s) => sameBackend(s, local));
+    if (!localCandidate) {
+      localCandidate = local;
       servers = [local, ...servers];
+    }
+
+    // A frontend-only deployment has no backend next to the page, so the local
+    // server is only offered (and made the default) when it actually answers.
+    const localWorks = await probeServer(localCandidate);
+    if (!localWorks) {
+      servers = servers.filter((s) => s !== localCandidate);
+    }
+    if (servers.length === 0) {
+      return useLocalServer();
     }
 
     testState.servers = servers;
 
-    // Default to the local server; pinging every listed server only happens
-    // when the user asks for it with the "Find closest server" button.
     // "mpot" makes the backend send CORS headers so remote servers work.
     testState.speedtest.setParameter("mpot", true);
     populateDropdown(servers);
     if (servers.length > 1) {
-      selectServer(local);
       hookUpFindClosestButton();
+      if (localWorks) {
+        // Default to the local server; pinging the other servers only happens
+        // when the user asks for it with the "Find closest server" button.
+        selectServer(localCandidate);
+      } else {
+        // Nothing local to default to: the configured servers are all there is,
+        // so pick the closest one.
+        findClosestServer(true);
+      }
     }
   } catch (error) {
     console.error("Failed to load server list:", error);
@@ -219,7 +237,7 @@ async function applyServerListJSON() {
  * stays selectable), show the results in the dropdown and switch to the
  * server with the lowest ping.
  */
-function findClosestServer() {
+function findClosestServer(autoSelect = false) {
   const button = document.querySelector("#find-closest");
   if (testState.state === RUNNING || testState.pingingServers) return;
   testState.pingingServers = true;
@@ -235,6 +253,9 @@ function findClosestServer() {
 
     if (bestServer && testState.state !== RUNNING) {
       selectServer(bestServer);
+    } else if (autoSelect && !bestServer) {
+      // nothing answered, but the page still needs a server to work with
+      selectServer(testState.servers[0]);
     }
     testState.pingingServers = false;
     button.textContent = bestServer
@@ -252,6 +273,48 @@ function hookUpFindClosestButton() {
     event.stopPropagation();
     findClosestServer();
   });
+}
+
+/**
+ * Whether two server definitions point at the same download URL once resolved
+ * against the page, so "/backend" and "http://host/backend/" count as one.
+ * @returns {boolean}
+ */
+function sameBackend(a, b) {
+  const resolve = (s) => {
+    try {
+      return new URL(s.server.replace(//?$/, "/") + s.dlURL, location.href).href;
+    } catch (error) {
+      return null;
+    }
+  };
+  const resolved = resolve(a);
+  return resolved !== null && resolved === resolve(b);
+}
+
+/**
+ * Checks that a server answers its ping URL, without measuring anything.
+ * @param {Object} server - a server object
+ * @returns {Promise<boolean>}
+ */
+async function probeServer(server) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const base = server.server.replace(//?$/, "/");
+    const url = new URL(base + server.pingURL, location.href);
+    url.searchParams.set("cors", "true");
+    url.searchParams.set("r", Math.random());
+    const response = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**

@@ -31,12 +31,12 @@ async function waitForSamples(page) {
 }
 
 async function waitForLocalServer(page, serverName) {
-  await expect(page.locator("#serverArea")).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator("#server option")).toContainText(serverName, { timeout: 10_000 });
+  // listed servers are added to the target dropdown once their pings are back
+  await expect(page.locator('#targetSelect option[value^="srv:"]')).toContainText(serverName, { timeout: 10_000 });
 }
 
 test.describe("Stability test", () => {
-  test("keeps the local start control disabled until server discovery completes", async ({ page }) => {
+  test("offers this server immediately and adds listed servers after discovery", async ({ page }) => {
     let releaseServerProbe;
     const serverProbe = new Promise(resolve => {
       releaseServerProbe = resolve;
@@ -49,19 +49,18 @@ test.describe("Stability test", () => {
 
     await page.goto(`${baseUrls.standalone}/stability.html`);
 
-    await expect(stabilityStartButton(page)).toHaveClass(/disabled/);
-    await expect(stabilityStartButton(page)).toHaveClass(/finding/);
-    await expect(stabilityStartButton(page)).toHaveAttribute("aria-disabled", "true");
-    await expect(stabilityStartButton(page)).toHaveAttribute("title", "Finding best server...");
-    await expect(page.locator("#server")).toBeDisabled();
+    // there is a single target dropdown, and starting never waits for discovery
+    await expect(page.locator("#serverArea")).toHaveCount(0);
+    await expect(page.locator("#targetSelect option[value=\"local\"]")).toHaveText("This server (local)");
+    await expect(page.locator("#targetSelect")).toHaveValue("local");
+    await expect(stabilityStartButton(page)).not.toHaveClass(/disabled/);
+    await expect(stabilityStartButton(page)).toHaveAttribute("aria-disabled", "false");
+    await expect(page.locator('#targetSelect option[value^="srv:"]')).toHaveCount(0);
 
     releaseServerProbe();
 
-    await expect(page.locator("#server option")).toContainText("local", { timeout: 10_000 });
+    await waitForLocalServer(page, "local");
     await expect(stabilityStartButton(page)).not.toHaveClass(/disabled/);
-    await expect(stabilityStartButton(page)).toHaveAttribute("aria-disabled", "false");
-    await expect(stabilityStartButton(page)).toHaveAttribute("title", "");
-    await expect(page.locator("#server")).toBeEnabled();
   });
 
   test("runs a short local measurement and exports CSV data", async ({ page }) => {
@@ -76,7 +75,6 @@ test.describe("Stability test", () => {
     await expect(stabilityStartButton(page)).toHaveClass(/running/);
     await expect(page.locator("#durationSelect")).toBeDisabled();
     await expect(page.locator("#targetSelect")).toBeDisabled();
-    await expect(page.locator("#server")).toBeDisabled();
 
     await waitForSamples(page);
     await expect(page.locator("#statAvg")).not.toHaveText("", { timeout: 5_000 });
@@ -122,8 +120,7 @@ test.describe("Stability test", () => {
   test("loads the configured dual-mode server list", async ({ page }) => {
     await page.goto(`${baseUrls.dual}/stability.html`);
 
-    await expect(page.locator("#serverArea")).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator("#server option")).toContainText("Local dual backend", { timeout: 10_000 });
+    await waitForLocalServer(page, "Local dual backend");
   });
 
   test("clears resource timings after measuring a ping", async ({ page }) => {
