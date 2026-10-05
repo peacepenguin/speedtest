@@ -14,7 +14,7 @@ const expectedAssets = [
   "/frontend/images/chevron.svg",
   "/frontend/fonts/Inter-latin.woff2",
   "/frontend/fonts/Inter-latin-ext.woff2",
-  "/frontend/images/background.jpeg",
+  "/frontend/images/background.svg",
   "/speedtest.js",
   "/speedtest_worker.js",
   "/design-switch.js",
