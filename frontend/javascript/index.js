@@ -283,7 +283,7 @@ function hookUpFindClosestButton() {
 function sameBackend(a, b) {
   const resolve = (s) => {
     try {
-      return new URL(s.server.replace(//?$/, "/") + s.dlURL, location.href).href;
+      return new URL(s.server.replace(/\/?$/, "/") + s.dlURL, location.href).href;
     } catch (error) {
       return null;
     }
@@ -301,7 +301,7 @@ async function probeServer(server) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
   try {
-    const base = server.server.replace(//?$/, "/");
+    const base = server.server.replace(/\/?$/, "/");
     const url = new URL(base + server.pingURL, location.href);
     url.searchParams.set("cors", "true");
     url.searchParams.set("r", Math.random());
