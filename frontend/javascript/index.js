@@ -70,6 +70,9 @@ function hookUpButtons() {
     .querySelector("#copy-link")
     .addEventListener("click", copyLinkButtonClickHandler);
   document
+    .querySelector("#results-link")
+    .addEventListener("click", (event) => event.target.select());
+  document
     .querySelectorAll(".close-dialog, #close-privacy")
     .forEach((element) => {
       element.addEventListener("click", () =>
@@ -539,6 +542,8 @@ function startRenderingLoop() {
 
       // Set image for sharing results
       if (testState.testData.testId) {
+        document.querySelector("#results-id-value").textContent =
+          testState.testData.testId;
         resultsImage.src =
           window.location.href.substring(
             0,
@@ -549,6 +554,7 @@ function startRenderingLoop() {
           // Ask for the design this frontend matches; the classic frontend
           // links the same URL and gets the classic image without asking.
           "&style=modern";
+        document.querySelector("#results-link").value = resultsImage.src;
       }
 
       testState.testDataDirty = false;

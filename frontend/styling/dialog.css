@@ -34,9 +34,32 @@ dialog {
 
   & > #results {
     max-width: 100%;
-    max-height: calc(100% - 8rem);
+    max-height: calc(100% - 16rem);
     height: auto;
     object-fit: contain;
+  }
+
+  & > #results-id {
+    margin: 1rem 0 0.5rem 0;
+    font-size: 1.4rem;
+    color: var(--secondary-text-color);
+  }
+
+  & > #results-link {
+    width: min(100%, 60rem);
+    padding: 0.8rem 1.2rem;
+    font-family: inherit;
+    font-size: 1.4rem;
+    color: var(--primary-text-color);
+    background: transparent;
+    border: 1px solid var(--server-selector-border-color);
+    border-radius: 0.8rem;
+    text-overflow: ellipsis;
+
+    &:focus {
+      outline: none;
+      border-color: var(--theme-green);
+    }
   }
 
   & > .close-dialog {
