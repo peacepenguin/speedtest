@@ -112,13 +112,6 @@
           0 0 2em rgba(0, 0, 0, 0.1),
           inset 0 0 1em rgba(0, 0, 0, 0.1);
       }
-      #serverArea {
-        margin: 0.8em 0;
-      }
-      #server {
-        font-size: 1em;
-        padding: 0.2em;
-      }
       #test {
         margin-top: 2em;
         margin-bottom: 2em;
@@ -288,19 +281,18 @@
         <option value="180">3 Minutes</option>
         <option value="300">5 Minutes</option>
       </select>
-      <select id="targetSelect" onchange="updateStartButtonState()">
-        <option value="">Local Server</option>
-        <option value="https://www.google.com/generate_204">Google</option>
-        <option value="https://www.cloudflare.com/cdn-cgi/trace">Cloudflare</option>
-        <option value="https://www.apple.com/library/test/success.html">Apple</option>
+      <select id="targetSelect" onchange="onTargetChange()">
+        <optgroup id="serverGroup" label="Speedtest servers">
+          <option value="local">This server (local)</option>
+        </optgroup>
+        <optgroup label="Internet hosts">
+          <option value="https://www.google.com/generate_204">Google</option>
+          <option value="https://www.cloudflare.com/cdn-cgi/trace">Cloudflare</option>
+          <option value="https://www.apple.com/library/test/success.html">Apple</option>
+        </optgroup>
       </select>
-      <div id="startBtn" class="disabled finding" onclick="startStop()" aria-disabled="true" title="Finding best server..."></div>
+      <div id="startBtn" onclick="startStop()" aria-disabled="false"></div>
       <div id="resetBtn" onclick="resetTest()">Reset</div>
-    </div>
-
-    <div id="serverArea" style="display: none">
-      Server:
-      <select id="server" onchange="onServerChange(this.value)"></select>
     </div>
 
     <div id="rating" class="none">--</div>
@@ -390,9 +382,7 @@
       var alertThresholdMs = 0;
       var lastBeepTime = 0;
       var audioCtx = null;
-      var selectedServer = null;
-      var localServerReady = false;
-      var serverDiscoveryPending = false;
+      var targetTouched = false;
 
       // Dark mode detection for canvas colors
       var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -472,58 +462,33 @@
 
       // Server initialization
       function initServers() {
-        selectedServer = null;
-        localServerReady = false;
-        serverDiscoveryPending = false;
-        I("server").innerHTML = "";
-        if (SPEEDTEST_SERVERS.length === 0) {
-          I("serverArea").style.display = "none";
-          localServerReady = true;
-          updateStartButtonState();
-        } else {
-          I("serverArea").style.display = "";
-          serverDiscoveryPending = true;
-          I("server").disabled = true;
-          var pendingOpt = document.createElement("option");
-          pendingOpt.value = "";
-          pendingOpt.textContent = "Finding best server...";
-          I("server").appendChild(pendingOpt);
-          updateStartButtonState();
-          // ping servers to find best one
-          var completed = 0;
-          var best = null;
-          for (var i = 0; i < SPEEDTEST_SERVERS.length; i++) {
-            (function (idx) {
-              pingServer(SPEEDTEST_SERVERS[idx], function (server, rtt) {
-                SPEEDTEST_SERVERS[idx].pingT = rtt;
-                if (rtt > 0 && (best === null || rtt < best.pingT)) best = SPEEDTEST_SERVERS[idx];
-                completed++;
-                if (completed === SPEEDTEST_SERVERS.length) {
-                  // populate dropdown
-                  I("server").innerHTML = "";
-                  // The server hosting this page is always available as a choice
-                  var localOpt = document.createElement("option");
-                  localOpt.value = "local";
-                  localOpt.textContent = "This server (local)";
-                  if (best === null) localOpt.selected = true;
-                  I("server").appendChild(localOpt);
-                  for (var j = 0; j < SPEEDTEST_SERVERS.length; j++) {
-                    if (SPEEDTEST_SERVERS[j].pingT <= 0) continue;
-                    var opt = document.createElement("option");
-                    opt.value = j;
-                    opt.textContent = SPEEDTEST_SERVERS[j].name;
-                    if (SPEEDTEST_SERVERS[j] === best) opt.selected = true;
-                    I("server").appendChild(opt);
-                  }
-                  selectedServer = best;
-                  serverDiscoveryPending = false;
-                  localServerReady = true;
-                  I("server").disabled = false;
-                  updateStartButtonState();
+        // "This server (local)" and the internet hosts are always usable, so the
+        // list only adds extra choices; reachable listed servers are appended to
+        // the "Speedtest servers" group once their pings have come back.
+        var completed = 0;
+        var best = null;
+        for (var i = 0; i < SPEEDTEST_SERVERS.length; i++) {
+          (function (idx) {
+            pingServer(SPEEDTEST_SERVERS[idx], function (server, rtt) {
+              SPEEDTEST_SERVERS[idx].pingT = rtt;
+              if (rtt > 0 && (best === null || rtt < best.pingT)) best = SPEEDTEST_SERVERS[idx];
+              completed++;
+              if (completed === SPEEDTEST_SERVERS.length) {
+                var group = I("serverGroup");
+                var bestOpt = null;
+                for (var j = 0; j < SPEEDTEST_SERVERS.length; j++) {
+                  if (SPEEDTEST_SERVERS[j].pingT <= 0) continue;
+                  var opt = document.createElement("option");
+                  opt.value = "srv:" + j;
+                  opt.textContent = SPEEDTEST_SERVERS[j].name;
+                  group.appendChild(opt);
+                  if (SPEEDTEST_SERVERS[j] === best) bestOpt = opt;
                 }
-              });
-            })(i);
-          }
+                // default to the fastest listed server unless the user already chose
+                if (bestOpt && !running && !targetTouched) bestOpt.selected = true;
+              }
+            });
+          })(i);
         }
       }
 
@@ -546,25 +511,28 @@
         xhr.send();
       }
 
-      function onServerChange(idx) {
-        if (idx === "") return;
-        selectedServer = idx === "local" ? null : SPEEDTEST_SERVERS[idx];
-        updateStartButtonState();
+      function onTargetChange() {
+        targetTouched = true;
+      }
+
+      // Returns {external: url|"", server: listed server object|null}
+      function currentTarget() {
+        var v = I("targetSelect").value;
+        if (v === "local") return { external: "", server: null };
+        if (v.indexOf("srv:") === 0) return { external: "", server: SPEEDTEST_SERVERS[parseInt(v.slice(4))] };
+        return { external: v, server: null };
       }
 
       function canStartTest() {
-        return !!I("targetSelect").value || localServerReady;
+        return true;
       }
 
       function updateStartButtonState() {
         if (running) return;
-
         var startBtn = I("startBtn");
-        var canStart = canStartTest();
-        startBtn.className = canStart ? "" : serverDiscoveryPending ? "disabled finding" : "disabled";
-        startBtn.setAttribute("aria-disabled", canStart ? "false" : "true");
-        startBtn.title = canStart ? "" : serverDiscoveryPending ? "Finding best server..." : "No reachable local server found";
-        I("server").disabled = !localServerReady || serverDiscoveryPending;
+        startBtn.className = "";
+        startBtn.setAttribute("aria-disabled", "false");
+        startBtn.title = "";
       }
 
       // Start/Stop
@@ -590,9 +558,10 @@
         I("startBtn").className = "running";
         I("durationSelect").disabled = true;
         I("targetSelect").disabled = true;
-        I("server").disabled = true;
 
-        var externalTarget = I("targetSelect").value;
+        var target = currentTarget();
+        var externalTarget = target.external;
+        var selectedServer = target.server;
         var workerSettings = {
           duration: parseInt(I("durationSelect").value),
           ping_allowPerformanceApi: true,
@@ -638,7 +607,6 @@
         I("startBtn").className = "";
         I("durationSelect").disabled = false;
         I("targetSelect").disabled = false;
-        I("server").disabled = false;
         updateStartButtonState();
         if (updater) {
           clearInterval(updater);
